@@ -1,0 +1,566 @@
+!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1">
+<title>Parkour City</title>
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  background: #a7c9e0;
+}
+#hud {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  max-width: 330px;
+  padding: 12px;
+  color: white;
+  background: #14202ddd;
+  border-radius: 12px;
+  z-index: 2;
+}
+button {
+  padding: 10px;
+  margin: 3px;
+  border: 0;
+  border-radius: 7px;
+}
+#controls {
+  position: fixed;
+  bottom: 15px;
+  left: 15px;
+  z-index: 2;
+}
+#controls button {
+  min-width: 55px;
+  min-height: 50px;
+  touch-action: none;
+  user-select: none;
+}
+#message {
+  margin-top: 8px;
+  color: #ffe496;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <strong>Parkour City</strong>
+  <div>WASD / Pfeiltasten: bewegen</div>
+  <div>Leertaste: springen · E: sprechen</div>
+  <div id="stats"></div>
+  <div id="message">
+    Gehe zur gelben Person und drücke E.
+  </div>
+  <button id="skate">Skateboard: 50</button>
+  <button id="roller">Roller: 80</button>
+  <button id="bmx">BMX: 120</button>
+</div>
+
+<div id="controls">
+  <button data-key="KeyW">↑</button><br>
+  <button data-key="KeyA">←</button>
+  <button data-key="KeyS">↓</button>
+  <button data-key="KeyD">→</button>
+  <button data-key="Space">Springen</button>
+  <button id="talk">E</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script type="module">
+import * as THREE from
+  "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa7c9e0);
+scene.fog = new THREE.Fog(0xa7c9e0, 70, 210);
+
+const camera = new THREE.PerspectiveCamera(
+  65, innerWidth / innerHeight, 0.1, 400
+);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const ambient = new THREE.HemisphereLight(
+  0xdceeff, 0x62533e, 2
+);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xffe4bf, 3);
+sun.position.set(30, 60, 25);
+sun.castShadow = true;
+sun.shadow.camera.left = -65;
+sun.shadow.camera.right = 65;
+sun.shadow.camera.top = 65;
+sun.shadow.camera.bottom = -65;
+sun.shadow.mapSize.set(1024, 1024);
+scene.add(sun);
+
+const obstacles = [];
+
+function box(x, y, z, w, h, d, color, solid = false) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.85
+    })
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  if (solid) {
+    obstacles.push({
+      x, z, w, d,
+      top: y + h / 2,
+      bottom: y - h / 2
+    });
+  }
+  return mesh;
+}
+
+box(0, -0.25, 0, 300, 0.5, 300, 0x657f49);
+box(0, 0.01, 0, 14, 0.02, 290, 0x393d40);
+box(0, 0.02, 0, 290, 0.02, 14, 0x393d40);
+
+for (let z = -140; z < 150; z += 10) {
+  box(0, 0.04, z, 0.18, 0.02, 4, 0xe4ded0);
+}
+
+for (let i = 0; i < 32; i++) {
+  const x = (i % 8 - 3.5) * 27;
+  const z = (Math.floor(i / 8) - 1.5) * 55;
+  const h = 10 + (i * 7 % 20);
+
+  box(x, h / 2, z, 16, h, 18, 0xafa395, true);
+
+  for (let y = 3; y < h; y += 3) {
+    for (let wx = -5; wx <= 5; wx += 5) {
+      box(x + wx, y, z + 9.03,
+          2, 1.6, 0.08, 0x658ba3);
+    }
+  }
+}
+
+for (let i = 0; i < 16; i++) {
+  const x = i % 2 ? 19 : -19;
+  const z = -65 + i * 9;
+
+  box(x, 1.8, z, 0.5, 3.6, 0.5, 0x745335);
+
+  const leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(2.3, 10, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0x426b3d
+    })
+  );
+  leaves.position.set(x, 4.4, z);
+  leaves.castShadow = true;
+  scene.add(leaves);
+}
+
+// Parkour-Stufen
+box(0, 0.55, -27, 8, 1.1, 1, 0xb65d45, true);
+box(0, 1, -37, 6, 2, 4, 0x7f929c, true);
+box(0, 1.6, -46, 6, 3.2, 4, 0x7f929c, true);
+box(0, 2.2, -55, 8, 4.4, 6, 0x7f929c, true);
+
+// Niedrige Überdachung zum Durchlaufen
+box(11, 2.5, -25, 6, 0.4, 5, 0x795778, true);
+
+function human(color) {
+  const group = new THREE.Group();
+  const limbs = [];
+
+  function part(w, h, d, x, y, z, c) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: c })
+    );
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    group.add(mesh);
+    return mesh;
+  }
+
+  part(0.55, 0.7, 0.32, 0, 1.1, 0, color);
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 12, 10),
+    new THREE.MeshStandardMaterial({
+      color: 0xc99573
+    })
+  );
+  head.position.y = 1.7;
+  group.add(head);
+
+  part(0.4, 0.12, 0.38, 0, 1.88, 0, 0x39291f);
+
+  for (const x of [-0.08, 0.08]) {
+    part(0.035, 0.035, 0.035,
+         x, 1.74, 0.21, 0x202025);
+  }
+
+  for (const x of [-0.17, 0.17]) {
+    limbs.push(part(
+      0.2, 0.65, 0.22, x, 0.38, 0, 0x293b53
+    ));
+  }
+
+  for (const x of [-0.38, 0.38]) {
+    limbs.push(part(
+      0.15, 0.6, 0.18, x, 1.08, 0, 0xc99573
+    ));
+  }
+
+  group.userData.limbs = limbs;
+  scene.add(group);
+  return group;
+}
+
+const player = human(0xb74236);
+player.position.set(0, 0, 8);
+
+const npc = human(0xe6c237);
+npc.position.set(3, 0, -7);
+
+const stats = document.getElementById("stats");
+const message = document.getElementById("message");
+const keys = {};
+const owned = new Set();
+
+let coins = 0;
+let quest = false;
+let questStart = 0;
+let vehicle = "Zu Fuß";
+let speed = 1;
+let verticalSpeed = 0;
+let grounded = true;
+let ride = null;
+
+function talk() {
+  if (player.position.distanceTo(npc.position) > 4) {
+    message.textContent =
+      "Gehe näher zur gelben Person.";
+    return;
+  }
+
+  if (!quest) {
+    quest = true;
+    questStart = performance.now();
+    message.textContent =
+      "Quest: Springe über die Stufen auf die " +
+      "höchste Plattform am Straßenende!";
+  } else {
+    message.textContent =
+      "Die höchste Plattform ist dein Ziel.";
+  }
+}
+
+document.getElementById("talk").onclick = talk;
+
+addEventListener("keydown", event => {
+  keys[event.code] = true;
+
+  if ([
+    "Space", "ArrowUp", "ArrowDown",
+    "ArrowLeft", "ArrowRight"
+  ].includes(event.code)) {
+    event.preventDefault();
+  }
+
+  if (event.code === "KeyE" && !event.repeat) {
+    talk();
+  }
+});
+
+addEventListener("keyup", event => {
+  keys[event.code] = false;
+});
+
+addEventListener("blur", () => {
+  for (const key in keys) keys[key] = false;
+});
+
+for (const button of document.querySelectorAll("[data-key]")) {
+  button.onpointerdown = event => {
+    event.preventDefault();
+    keys[button.dataset.key] = true;
+    button.setPointerCapture(event.pointerId);
+  };
+
+  button.onpointerup = button.onpointercancel = () => {
+    keys[button.dataset.key] = false;
+  };
+}
+
+function buy(name, price, multiplier) {
+  if (!owned.has(name)) {
+    if (coins < price) {
+      message.textContent =
+        "Noch nicht genug Coins. Schaffe die Quest!";
+      return;
+    }
+    coins -= price;
+    owned.add(name);
+  }
+
+  vehicle = name;
+  speed = multiplier;
+
+  if (ride) player.remove(ride);
+  ride = new THREE.Group();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x333a43
+  });
+
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(0.35, 0.08, 1.1),
+    material
+  );
+  deck.position.y = 0.1;
+  ride.add(deck);
+
+  for (const z of [-0.4, 0.4]) {
+    const radius = name === "BMX" ? 0.28 : 0.11;
+    const wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        radius, radius, 0.4, 12
+      ),
+      new THREE.MeshStandardMaterial({
+        color: 0x151515
+      })
+    );
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(0, 0.12, z);
+    ride.add(wheel);
+  }
+
+  if (name !== "Skateboard") {
+    const handle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.9, 0.05),
+      material
+    );
+    handle.position.set(0, 0.55, 0.4);
+    ride.add(handle);
+  }
+
+  player.add(ride);
+}
+
+document.getElementById("skate").onclick =
+  () => buy("Skateboard", 50, 1.5);
+
+document.getElementById("roller").onclick =
+  () => buy("Roller", 80, 1.7);
+
+document.getElementById("bmx").onclick =
+  () => buy("BMX", 120, 2);
+
+// Andere verbundene Spieler
+const socket = io();
+const others = new Map();
+
+socket.on("players", players => {
+  for (const [id, data] of Object.entries(players)) {
+    if (id === socket.id) continue;
+
+    if (!others.has(id)) {
+      others.set(id, human(0x3679ac));
+    }
+
+    const person = others.get(id);
+    person.position.set(data.x, data.y, data.z);
+    person.rotation.y = data.r;
+  }
+
+  for (const [id, person] of others) {
+    if (!players[id]) {
+      scene.remove(person);
+      others.delete(id);
+    }
+  }
+});
+
+function blocked(x, z) {
+  return obstacles.some(obstacle =>
+    Math.abs(x - obstacle.x) < obstacle.w / 2 + 0.28 &&
+    Math.abs(z - obstacle.z) < obstacle.d / 2 + 0.28 &&
+    player.position.y < obstacle.top - 0.06 &&
+    player.position.y + 1.9 > obstacle.bottom + 0.08
+  );
+}
+
+const clock = new THREE.Clock();
+let time = 0;
+let sendTimer = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.04);
+  time += dt;
+
+  let dx =
+    (keys.KeyD || keys.ArrowRight ? 1 : 0) -
+    (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+
+  let dz =
+    (keys.KeyS || keys.ArrowDown ? 1 : 0) -
+    (keys.KeyW || keys.ArrowUp ? 1 : 0);
+
+  const length = Math.hypot(dx, dz);
+
+  if (length) {
+    dx /= length;
+    dz /= length;
+  }
+
+  const movementSpeed =
+    5 * speed * (keys.ShiftLeft ? 1.6 : 1);
+
+  const nextX = player.position.x +
+    dx * movementSpeed * dt;
+
+  const nextZ = player.position.z +
+    dz * movementSpeed * dt;
+
+  if (!blocked(nextX, player.position.z)) {
+    player.position.x = nextX;
+  }
+
+  if (!blocked(player.position.x, nextZ)) {
+    player.position.z = nextZ;
+  }
+
+  if (length) {
+    player.rotation.y = Math.atan2(dx, dz);
+  }
+
+  if (keys.Space && grounded) {
+    verticalSpeed = 8.8;
+    grounded = false;
+  }
+
+  const oldY = player.position.y;
+  verticalSpeed -= 20 * dt;
+  player.position.y += verticalSpeed * dt;
+
+  let floor = 0;
+
+  for (const obstacle of obstacles) {
+    const above =
+      Math.abs(player.position.x - obstacle.x) <
+        obstacle.w / 2 + 0.15 &&
+      Math.abs(player.position.z - obstacle.z) <
+        obstacle.d / 2 + 0.15;
+
+    if (
+      above &&
+      oldY >= obstacle.top - 0.08 &&
+      player.position.y <= obstacle.top &&
+      verticalSpeed <= 0
+    ) {
+      floor = Math.max(floor, obstacle.top);
+    }
+  }
+
+  if (player.position.y <= floor) {
+    player.position.y = floor;
+    verticalSpeed = 0;
+    grounded = true;
+  } else {
+    grounded = false;
+  }
+
+  player.userData.limbs.forEach((limb, index) => {
+    limb.rotation.x = length
+      ? Math.sin(time * 10) *
+        (index % 2 ? -0.45 : 0.45)
+      : 0;
+  });
+
+  if (
+    quest &&
+    Math.abs(player.position.x) < 4 &&
+    Math.abs(player.position.z + 55) < 3 &&
+    player.position.y >= 4.35
+  ) {
+    const seconds =
+      (performance.now() - questStart) / 1000;
+
+    const reward =
+      seconds < 25 ? 90 : seconds < 50 ? 70 : 50;
+
+    coins += reward;
+    quest = false;
+
+    message.textContent =
+      "Geschafft in " + seconds.toFixed(1) +
+      " Sekunden! +" + reward +
+      " Coins. Neue Quest bei der gelben Person.";
+  }
+
+  stats.textContent =
+    coins + " Coins · " + vehicle + " · " +
+    others.size + " andere Spieler";
+
+  const light = 0.65 + 0.35 * Math.sin(time / 120);
+  sun.intensity = light * 3;
+
+  camera.position.lerp(
+    new THREE.Vector3(
+      player.position.x,
+      player.position.y + 6,
+      player.position.z + 10
+    ),
+    1 - Math.exp(-6 * dt)
+  );
+
+  camera.lookAt(
+    player.position.x,
+    player.position.y + 1,
+    player.position.z
+  );
+
+  sendTimer += dt;
+
+  if (sendTimer > 0.06) {
+    sendTimer = 0;
+
+    socket.emit("move", {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z,
+      r: player.rotation.y
+    });
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
